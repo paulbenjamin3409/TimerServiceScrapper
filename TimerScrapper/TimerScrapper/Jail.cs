@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using HtmlAgilityPack;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Host;
@@ -17,13 +18,19 @@ namespace TimerScrapper
             log.LogInformation($"Jail Timer trigger function executed at: {DateTime.Now}");
             // https://web.minnehahacounty.org/dept/so/jailInmateInfo/jailInmateInfoSearchResults.php?txtLastName=&btnSearch=Search
             // https://web.minnehahacounty.org/dept/so/jailInmateInfo/jailInmateInfo.php 
+
             var html = string.Format("https://web.minnehahacounty.org/dept/so/jailInmateInfo/jailInmateInfoSearchResults.php?txtLastName=&btnSearch=Search");
-            string[] stringArray = { "span", "script", "head", "title", "br" };
+
+            string[] lastNamesOfPeopleToFind = { "ade", "black", "craig", "the", "br" };
+
+            var outputString = new StringBuilder();
+
             HtmlWeb web = new HtmlWeb();
 
             var htmlDoc = web.Load(html);
             var inmates = new List<Inmate>();
-
+            var header = new Inmate();
+            var counter = 0;
             foreach (HtmlNode table in htmlDoc.DocumentNode.SelectNodes("//table[@class='tablesorter']"))
             {
                 var rows = table.Descendants("tr");
@@ -35,15 +42,38 @@ namespace TimerScrapper
                     if (cells?.Count() == 9)
                     {
                         // header row?
-                        inmates.Add(ParseInmate(cells));
+                        if (counter == 0)
+                        {
+                            header = ParseInmate(cells);
+                            counter += 1;
+                        }
+                        else
+                        {
+                            inmates.Add(ParseInmate(cells));
+                        }
+
                     }
                 }
             }
 
-            foreach (Inmate inmate in inmates)
+            // search the list for people
+            foreach (var name in lastNamesOfPeopleToFind.ToList())
             {
-                log.LogInformation(string.Format("{0} {1} - {2} {3}", inmate.FirstName,inmate.LastName,inmate.IntakeDate,inmate.IntakeTime));
+                var regEx = new System.Text.RegularExpressions.Regex(name);
+                var foundInmates = inmates.Where(x => regEx.IsMatch(x.LastName.ToLower()) || regEx.IsMatch(x.FirstName.ToLower()));
+                foreach (Inmate inmate in foundInmates)
+                {
+                    outputString.Append(string.Format("{0} {1} - {2} {3} - {4}", inmate.FirstName, inmate.LastName, inmate.IntakeDate, inmate.IntakeTime, inmate.Facility));
+                }
             }
+
+            log.LogInformation(outputString.ToString());
+            log.LogInformation($"Jail Timer trigger function completed at: {DateTime.Now}");
+            // Output headers and then people matching list
+            //foreach (Inmate inmate in inmates)
+            //{
+            //    log.LogInformation(string.Format("{0} {1} - {2} {3}", inmate.FirstName,inmate.LastName,inmate.IntakeDate,inmate.IntakeTime));
+            //}
 
         }
 
